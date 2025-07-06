@@ -3,80 +3,130 @@ import blf
 import gpu
 from gpu_extras.batch import batch_for_shader
 
+# Store completed strokes and redo stack globally.
+strokes = []
+redo_stack = []
+current_stroke = []
+
 
 def draw_callback_px(self, context):
-    print("mouse points", len(self.mouse_path))
-
-    font_id = 0  # XXX, need to find out how best to get this.
-
-    # draw some text
-    blf.position(font_id, 15, 30, 0)
-    blf.size(font_id, 20.0)
-    blf.draw(font_id, "Hello Word " + str(len(self.mouse_path)))
-
-    # 50% alpha, 2 pixel width line
+    # Draw all stored strokes and the one currently being drawn.
     shader = gpu.shader.from_builtin('UNIFORM_COLOR')
     gpu.state.blend_set('ALPHA')
     gpu.state.line_width_set(2.0)
-    batch = batch_for_shader(shader, 'LINE_STRIP', {"pos": self.mouse_path})
-    shader.uniform_float("color", (0.0, 0.0, 0.0, 0.5))
-    batch.draw(shader)
+    shader.uniform_float('color', (0.0, 0.0, 0.0, 0.5))
 
-    # restore opengl defaults
+    for stroke in strokes:
+        if len(stroke) >= 2:
+            batch = batch_for_shader(shader, 'LINE_STRIP', {'pos': stroke})
+            batch.draw(shader)
+
+    if current_stroke:
+        batch = batch_for_shader(shader, 'LINE_STRIP', {'pos': current_stroke})
+        batch.draw(shader)
+
     gpu.state.line_width_set(1.0)
     gpu.state.blend_set('NONE')
 
 
 class ModalDrawOperator(bpy.types.Operator):
-    """Draw a line with the mouse"""
+    """Draw freehand strokes in the 3D view"""
     bl_idname = "view3d.modal_draw_operator"
-    bl_label = "Simple Modal View3D Operator"
+    bl_label = "Draw Strokes"
 
     def modal(self, context, event):
+        global current_stroke
         context.area.tag_redraw()
 
-        if event.type == 'MOUSEMOVE':
-            self.mouse_path.append((event.mouse_region_x, event.mouse_region_y))
-
-        elif event.type == 'LEFTMOUSE':
-            bpy.types.SpaceView3D.draw_handler_remove(self._handle, 'WINDOW')
-            return {'FINISHED'}
-
-        elif event.type in {'RIGHTMOUSE', 'ESC'}:
+        if event.type in {'RIGHTMOUSE', 'ESC'}:
             bpy.types.SpaceView3D.draw_handler_remove(self._handle, 'WINDOW')
             return {'CANCELLED'}
+
+        if event.type == 'LEFTMOUSE':
+            if event.value == 'PRESS':
+                current_stroke = []
+                strokes.append(current_stroke)
+                redo_stack.clear()
+            elif event.value == 'RELEASE':
+                current_stroke = []
+            return {'RUNNING_MODAL'}
+
+        if event.type == 'MOUSEMOVE' and current_stroke is not None:
+            current_stroke.append((event.mouse_region_x, event.mouse_region_y))
+            return {'RUNNING_MODAL'}
+
+        if event.type == 'Z' and event.value == 'PRESS':
+            if strokes:
+                redo_stack.append(strokes.pop())
+            return {'RUNNING_MODAL'}
+
+        if event.type == 'Y' and event.value == 'PRESS':
+            if redo_stack:
+                strokes.append(redo_stack.pop())
+            return {'RUNNING_MODAL'}
 
         return {'RUNNING_MODAL'}
 
     def invoke(self, context, event):
-        if context.area.type == 'VIEW_3D':
-            # The arguments we pass the callback.
-            args = (self, context)
-            # Add the region OpenGL drawing callback draw in view space with `POST_VIEW` and `PRE_VIEW`.
-            self._handle = bpy.types.SpaceView3D.draw_handler_add(draw_callback_px, args, 'WINDOW', 'POST_PIXEL')
-
-            self.mouse_path = []
-
-            context.window_manager.modal_handler_add(self)
-            return {'RUNNING_MODAL'}
-        else:
-            self.report({'WARNING'}, "View3D not found, cannot run operator")
-            return {'CANCELLED'}
+        args = (self, context)
+        self._handle = bpy.types.SpaceView3D.draw_handler_add(draw_callback_px, args, 'WINDOW', 'POST_PIXEL')
+        context.window_manager.modal_handler_add(self)
+        return {'RUNNING_MODAL'}
 
 
-def menu_func(self, context):
-    self.layout.operator(ModalDrawOperator.bl_idname, text="Modal Draw Operator")
+class StrokeUndo(bpy.types.Operator):
+    bl_idname = "view3d.stroke_undo"
+    bl_label = "Undo Stroke"
+
+    def execute(self, context):
+        if strokes:
+            redo_stack.append(strokes.pop())
+            context.area.tag_redraw()
+        return {'FINISHED'}
 
 
-# Register and add to the "view" menu (required to also use F3 search "Modal Draw Operator" for quick access).
+class StrokeRedo(bpy.types.Operator):
+    bl_idname = "view3d.stroke_redo"
+    bl_label = "Redo Stroke"
+
+    def execute(self, context):
+        if redo_stack:
+            strokes.append(redo_stack.pop())
+            context.area.tag_redraw()
+        return {'FINISHED'}
+
+
+class StrokePanel(bpy.types.Panel):
+    bl_label = "Stroke Tools"
+    bl_idname = "VIEW3D_PT_stroke_tools"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Tool"
+
+    def draw(self, context):
+        layout = self.layout
+        layout.operator(ModalDrawOperator.bl_idname, text="Draw Stroke")
+        layout.separator()
+        layout.operator(StrokeUndo.bl_idname, text="Undo")
+        layout.operator(StrokeRedo.bl_idname, text="Redo")
+
+
+classes = (
+    ModalDrawOperator,
+    StrokeUndo,
+    StrokeRedo,
+    StrokePanel,
+)
+
+
 def register():
-    bpy.utils.register_class(ModalDrawOperator)
-    bpy.types.VIEW3D_MT_view.append(menu_func)
+    for cls in classes:
+        bpy.utils.register_class(cls)
 
 
 def unregister():
-    bpy.utils.unregister_class(ModalDrawOperator)
-    bpy.types.VIEW3D_MT_view.remove(menu_func)
+    for cls in reversed(classes):
+        bpy.utils.unregister_class(cls)
 
 
 if __name__ == "__main__":
