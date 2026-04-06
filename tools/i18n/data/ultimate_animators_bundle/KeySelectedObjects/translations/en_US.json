@@ -1,0 +1,20 @@
+{
+  "Active sequence does not have the property or no active sequence.": "Active sequence does not have the property or no active sequence.",
+  "Add Property of Selected Objects to Keying Set": "Add Property of Selected Objects to Keying Set",
+  "Blastframe": "Blastframe",
+  "Check For Updates": "Check For Updates",
+  "Clear Keyframes for Selected Objects": "Clear Keyframes for Selected Objects",
+  "Clear Single Keyframes for Selected Objects": "Clear Single Keyframes for Selected Objects",
+  "Delete All Paths": "Delete All Paths",
+  "Insert Keys for Selected Objects": "Insert Keys for Selected Objects",
+  "Keyframe All Selected Clips": "Keyframe All Selected Clips",
+  "Keyframe All Selected Objects": "Keyframe All Selected Objects",
+  "Outliner Object Selections": "Outliner Object Selections",
+  "Please open an Outliner space to keyframe this property.": "Please open an Outliner space to keyframe this property.",
+  "Property is not animatable.": "Property is not animatable.",
+  "Sign In": "Sign In",
+  "Superhive": "Superhive",
+  "To check updates, please enabled online access in Blender Preferences": "To check updates, please enabled online access in Blender Preferences",
+  "Updates are managed by the Blastframe repository.": "Updates are managed by the Blastframe repository.",
+  "YouTube": "YouTube"
+}
